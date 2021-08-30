@@ -1,0 +1,749 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Resources for AWS FIS Demo. 
+
+Parameters:
+  amzn2Ami:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+    
+Resources:
+
+  FISVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc
+    
+  FisVPCPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.0.0/18
+      VpcId:
+        Ref: FISVPC
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc/PublicSubnet1
+
+  FisVPCPublicSubnet1RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: FISVPC
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc/PublicSubnet1
+  
+  FisVPCPublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: FisVPCPublicSubnet1RouteTable
+      SubnetId:
+        Ref: FisVPCPublicSubnet1
+  
+  FisVPCPublicSubnet1DefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: FisVPCPublicSubnet1RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: VpcInternetGateway
+    DependsOn:
+      - VpcGatewayAttachment
+  
+  FisVPCPublicSubnet1EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc/PublicSubnet1
+  
+  FisVPCPublicSubnet1NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - FisVPCPublicSubnet1EIP
+          - AllocationId
+      SubnetId:
+        Ref: FisVPCPublicSubnet1
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc/PublicSubnet1
+  
+  FisVPCPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.64.0/18
+      VpcId:
+        Ref: FISVPC
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc/PublicSubnet2
+
+  FisVPCPublicSubnet2RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: FISVPC
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc/PublicSubnet2
+  
+  FisVPCPublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: FisVPCPublicSubnet2RouteTable
+      SubnetId:
+        Ref: FisVPCPublicSubnet2
+  
+  FisVPCPublicSubnet2DefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: FisVPCPublicSubnet2RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: VpcInternetGateway
+    DependsOn:
+      - VpcGatewayAttachment
+  
+  FisVPCPublicSubnet2EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc/PublicSubnet2
+  
+  FisVPCPublicSubnet2NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - FisVPCPublicSubnet2EIP
+          - AllocationId
+      SubnetId:
+        Ref: FisVPCPublicSubnet2
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc/PublicSubnet2
+  
+ 
+  VpcInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: FisDemo/vpc
+  
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: FISVPC
+      InternetGatewayId:
+        Ref: VpcInternetGateway
+  
+  
+  
+  ssmInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                Fn::Join:
+                  - ""
+                  - - ec2.
+                    - Ref: AWS::URLSuffix
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/AmazonSSMManagedInstanceCore
+  
+  instance0SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: FisExampleStack/instance-0/InstanceSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-0
+      VpcId:
+        Ref: FISVPC
+  
+  instance0InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: ssmInstanceRole
+  
+  instance0:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      IamInstanceProfile:
+        Ref: instance0InstanceProfile
+      ImageId:
+        Ref: amzn2Ami
+      InstanceType: t3a.nano
+      SecurityGroupIds:
+        - Fn::GetAtt:
+            - instance0SecurityGroup
+            - GroupId
+      SubnetId:
+        Ref: FisVPCPublicSubnet1
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-0
+      UserData:
+        Fn::Base64: "#!/bin/bash"
+    DependsOn:
+      - ssmInstanceRole
+  
+  instance1SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: FisExampleStack/instance-1/InstanceSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-1
+      VpcId:
+        Ref: FISVPC
+  
+  instance1InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: ssmInstanceRole
+
+  instance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      IamInstanceProfile:
+        Ref: instance1InstanceProfile
+      ImageId:
+        Ref: amzn2Ami
+      InstanceType: t3a.nano
+      SecurityGroupIds:
+        - Fn::GetAtt:
+            - instance1SecurityGroup
+            - GroupId
+      SubnetId:
+        Ref: FisVPCPublicSubnet2
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-1
+      UserData:
+        Fn::Base64: "#!/bin/bash"
+    DependsOn:
+      - ssmInstanceRole
+  
+  instance2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: FisExampleStack/instance-2/InstanceSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-2
+      VpcId:
+        Ref: FISVPC
+  
+  instance2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: ssmInstanceRole
+  
+  instance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      IamInstanceProfile:
+        Ref: instance2InstanceProfile
+      ImageId:
+        Ref: amzn2Ami
+      InstanceType: t3a.nano
+      SecurityGroupIds:
+        - Fn::GetAtt:
+            - instance2SecurityGroup
+            - GroupId
+      SubnetId:
+        Ref: FisVPCPublicSubnet1
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-2
+      UserData:
+        Fn::Base64: "#!/bin/bash"
+    DependsOn:
+      - ssmInstanceRole
+  
+  instance3SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: FisExampleStack/instance-3/InstanceSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-3
+      VpcId:
+        Ref: FISVPC
+  
+  instance3InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: ssmInstanceRole
+  
+  instance3:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      IamInstanceProfile:
+        Ref: instance3InstanceProfile
+      ImageId:
+        Ref: amzn2Ami
+      InstanceType: t3a.nano
+      SecurityGroupIds:
+        - Fn::GetAtt:
+            - instance3SecurityGroup
+            - GroupId
+      SubnetId:
+        Ref: FisVPCPublicSubnet2
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-3
+      UserData:
+        Fn::Base64: "#!/bin/bash"
+    DependsOn:
+      - ssmInstanceRole
+  
+  instance4SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: FisExampleStack/instance-4/InstanceSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-4
+      VpcId:
+        Ref: FISVPC
+  
+  instance4InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: ssmInstanceRole
+  
+  instance4:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      IamInstanceProfile:
+        Ref: instance4InstanceProfile
+      ImageId:
+        Ref: amzn2Ami
+      InstanceType: t3a.nano
+      SecurityGroupIds:
+        - Fn::GetAtt:
+            - instance4SecurityGroup
+            - GroupId
+      SubnetId:
+        Ref: FisVPCPublicSubnet1
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-4
+      UserData:
+        Fn::Base64: "#!/bin/bash"
+    DependsOn:
+      - ssmInstanceRole
+  
+  instance5SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: FisExampleStack/instance-5/InstanceSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-5
+      VpcId:
+        Ref: FISVPC
+  
+  instance5InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: ssmInstanceRole
+  
+  instance5:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      IamInstanceProfile:
+        Ref: instance5InstanceProfile
+      ImageId:
+        Ref: amzn2Ami
+      InstanceType: t3a.nano
+      SecurityGroupIds:
+        - Fn::GetAtt:
+            - instance5SecurityGroup
+            - GroupId
+      SubnetId:
+        Ref: FisVPCPublicSubnet2
+      Tags:
+        - Key: FIS-Target
+          Value: "true"
+        - Key: Name
+          Value: FisExampleStack/instance-5
+      UserData:
+        Fn::Base64: "#!/bin/bash"
+    DependsOn:
+      - ssmInstanceRole
+  
+  cloudWatchAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ComparisonOperator: LessThanThreshold
+      EvaluationPeriods: 1
+      AlarmName: NetworkInAbnormal
+      DatapointsToAlarm: 1
+      MetricName: NetworkIn
+      Namespace: AWS/EC2
+      Period: 60
+      Statistic: Average
+      Threshold: 10
+      TreatMissingData: notBreaching
+  
+  fisDemoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: fis.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/AmazonEC2FullAccess
+  
+  fisroleDefaultPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - ssm:SendCommand
+              - ssm:ListCommands
+              - ssm:CancelCommands
+            Effect: Allow
+            Resource: "*"
+        Version: "2012-10-17"
+      PolicyName: fisroleDefaultPolicy
+      Roles:
+        - Ref: fisDemoRole
+  
+  fisTemplateDemoStopInstance:
+    Type: AWS::FIS::ExperimentTemplate
+    Properties:
+      Description: Demo for Stopping and Starting a single instance via instance id
+      RoleArn:
+        Fn::GetAtt:
+          - fisDemoRole
+          - Arn
+      StopConditions:
+        - Source: none
+      Tags:
+        Name: StopAndStartInstance
+      Targets:
+        instanceTargets:
+          ResourceArns:
+            - Fn::Join:
+                - ""
+                - - "arn:aws:ec2:"
+                  - Ref: AWS::Region
+                  - ":"
+                  - Ref: AWS::AccountId
+                  - :instance/
+                  - Ref: instance0
+          
+          ResourceType: aws:ec2:instance
+          SelectionMode: ALL
+      Actions:
+        instanceActions:
+          ActionId: aws:ec2:stop-instances
+          Parameters:
+            startInstancesAfterDuration: PT1M
+          Targets:
+            Instances: instanceTargets
+  
+  fisTemplateDemoStopInstanceWithAlarm:
+    Type: AWS::FIS::ExperimentTemplate
+    Properties:
+      Description: Demo for Stopping and Starting a single instance via instance id and abort by alarm
+      RoleArn:
+        Fn::GetAtt:
+          - fisDemoRole
+          - Arn
+      StopConditions:
+        - Source: aws:cloudwatch:alarm
+          Value:
+            Fn::GetAtt:
+              - cloudWatchAlarm
+              - Arn
+      Tags:
+        Name: AbortFiSExperimentByAlarm
+      Targets:
+        instanceTargets:
+          ResourceArns:
+            - Fn::Join:
+                - ""
+                - - "arn:aws:ec2:"
+                  - Ref: AWS::Region
+                  - ":"
+                  - Ref: AWS::AccountId
+                  - :instance/
+                  - Ref: instance0
+          
+          ResourceType: aws:ec2:instance
+          SelectionMode: ALL
+      Actions:
+        instanceActions:
+          ActionId: aws:ec2:stop-instances
+          Parameters:
+            startInstancesAfterDuration: PT10M
+          Targets:
+            Instances: instanceTargets
+  
+  fisTemplateDemoStopInstancesInAZ:
+    Type: AWS::FIS::ExperimentTemplate
+    Properties:
+      Description: Demo for Stopping and Starting all instances in an AZ
+      RoleArn:
+        Fn::GetAtt:
+          - fisDemoRole
+          - Arn
+      StopConditions:
+        - Source: none
+      Tags:
+        Name: StopInstancesInAz
+      Targets:
+        instanceTargets:
+          Filters:
+            - Path: Placement.AvailabilityZone
+              Values:
+                - Fn::GetAtt:
+                    - instance0
+                    - AvailabilityZone
+            - Path: State.Name
+              Values:
+                - running
+          ResourceTags:
+            FIS-Target: "true"
+          ResourceType: aws:ec2:instance
+          SelectionMode: ALL
+      Actions:
+        instanceActions:
+          ActionId: aws:ec2:stop-instances
+          Parameters:
+            startInstancesAfterDuration: PT1M
+          Targets:
+            Instances: instanceTargets
+  
+  fisTemplateDemoCpuStress:
+    Type: AWS::FIS::ExperimentTemplate
+    Properties:
+      Description: Demo for injecting CPU stress via SSM
+      RoleArn:
+        Fn::GetAtt:
+          - fisDemoRole
+          - Arn
+      StopConditions:
+        - Source: none
+      Tags:
+        Name: StressCPUThroughSSM
+      Targets:
+        instanceTargets:
+          ResourceArns:
+            - Fn::Join:
+                - ""
+                - - "arn:aws:ec2:"
+                  - Ref: AWS::Region
+                  - ":"
+                  - Ref: AWS::AccountId
+                  - :instance/
+                  - Ref: instance0
+          
+          ResourceType: aws:ec2:instance
+          SelectionMode: ALL
+      Actions:
+        instanceActions:
+          ActionId: aws:ssm:send-command
+          Description: burn cpu vis SSM
+          Parameters:
+            documentArn:
+              Fn::Join:
+                - ""
+                - - "arn:aws:ssm:"
+                  - Ref: AWS::Region
+                  - ::document/AWSFIS-Run-CPU-Stress
+            documentParameters: '{"DurationSeconds":"120"}'
+            duration: PT2M
+          Targets:
+            Instances: instanceTargets
+  
+  fisTemplateDemoStopEksNode:
+    Type: AWS::FIS::ExperimentTemplate
+    Properties:
+      Description: Demo for terminating an eks worker
+      RoleArn:
+        Fn::GetAtt:
+          - fisDemoRole
+          - Arn
+      StopConditions:
+        - Source: none
+      Tags:
+        Name: Terminate EKS Workers
+      Targets:
+        nodeGroupTarget:
+          ResourceTags:
+            eksctl.cluster.k8s.io/v1alpha1/cluster-name: eks-demo
+          ResourceType: aws:eks:nodegroup
+          SelectionMode: ALL
+      Actions:
+        instanceActions:
+          ActionId: aws:eks:terminate-nodegroup-instances
+          Description: Terminate EKS NodeGroup Instance
+          Parameters:
+            instanceTerminationPercentage: "50"
+          Targets:
+            Nodegroups: nodeGroupTarget
+  
+  fisTemplateDemoKillContainer:
+    Type: AWS::FIS::ExperimentTemplate
+    Properties:
+      Description: Demo for killing a docker container on an EKS worker
+      RoleArn:
+        Fn::GetAtt:
+          - fisDemoRole
+          - Arn
+      StopConditions:
+        - Source: none
+      Tags:
+        Name: Kill Container on EKS Worker
+      Targets:
+        workerNodesTarget:
+          Filters:
+            - Path: State.Name
+              Values:
+                - running
+          ResourceTags:
+            Name: eks-demo-nodegroup-Node
+          ResourceType: aws:ec2:instance
+          SelectionMode: ALL
+      Actions:
+        instanceActions:
+          ActionId: aws:ssm:send-command
+          Description: Kill the frontend container
+          Parameters:
+            documentArn:
+              Fn::Join:
+                - ""
+                - - "arn:aws:ssm:"
+                  - Ref: AWS::Region
+                  - ::document/AWS-RunShellScript
+            documentParameters: '{"commands":"sudo docker kill $(sudo docker ps -f name=k8s_ecsdemo-frontend -q)"}'
+            duration: PT1M
+          Targets:
+            Instances: workerNodesTarget
+

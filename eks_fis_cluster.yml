@@ -1,0 +1,15 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: eks-demo
+  region: ap-south-1
+  version: "1.19"
+
+
+managedNodeGroups:
+- name: demo-nodegroup
+  desiredCapacity: 3
+  instanceType: m5.large
+  ssh:
+    enableSsm: true
